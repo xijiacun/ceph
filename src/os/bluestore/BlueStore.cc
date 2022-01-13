@@ -1108,15 +1108,19 @@ struct LruOnodeCacheShard : public BlueStore::OnodeCacheShard {
   {
     if (o->put_cache()) {
       (level > 0) ? lru.push_front(*o) : lru.push_back(*o);
+      o->cache_age_bin = age_bins.front();
+      *(o->cache_age_bin) += 1;
     } else {
       ++num_pinned;
     }
     ++num; // we count both pinned and unpinned entries
-    dout(20) << __func__ << " " << this << " " << o->oid << " added, num=" << num << dendl;
+    dout(20) << __func__ << " " << this << " " << o->oid << " added, num="
+             << num << dendl;
   }
   void _rm(BlueStore::Onode* o) override
   {
     if (o->pop_cache()) {
+      *(o->cache_age_bin) -= 1;
       lru.erase(lru.iterator_to(*o));
     } else {
       ceph_assert(num_pinned);
@@ -1128,6 +1132,7 @@ struct LruOnodeCacheShard : public BlueStore::OnodeCacheShard {
   }
   void _pin(BlueStore::Onode* o) override
   {
+    *(o->cache_age_bin) -= 1;
     lru.erase(lru.iterator_to(*o));
     ++num_pinned;
     dout(20) << __func__ << " " << this << " " << " " << " " << o->oid << " pinned" << dendl;
@@ -1135,6 +1140,8 @@ struct LruOnodeCacheShard : public BlueStore::OnodeCacheShard {
   void _unpin(BlueStore::Onode* o) override
   {
     lru.push_front(*o);
+    o->cache_age_bin = age_bins.front();
+    *(o->cache_age_bin) += 1;
     ceph_assert(num_pinned);
     --num_pinned;
     dout(20) << __func__ << " " << this << " " << " " << " " << o->oid << " unpinned" << dendl;
@@ -1168,6 +1175,7 @@ struct LruOnodeCacheShard : public BlueStore::OnodeCacheShard {
         ceph_assert(n == 0);
         lru.erase(p);
       }
+      *(o->cache_age_bin) -= 1;
       auto pinned = !o->pop_cache();
       ceph_assert(!pinned);
       o->c->onode_map._remove(o->oid);
@@ -1229,11 +1237,15 @@ struct LruBufferCacheShard : public BlueStore::BufferCacheShard {
       lru.push_back(*b);
     }
     buffer_bytes += b->length;
+    b->cache_age_bin = age_bins.front();
+    *(b->cache_age_bin) += b->length;
     num = lru.size();
   }
   void _rm(BlueStore::Buffer *b) override {
     ceph_assert(buffer_bytes >= b->length);
     buffer_bytes -= b->length;
+    assert(*(b->cache_age_bin) >= b->length);
+    *(b->cache_age_bin) -= b->length;
     auto q = lru.iterator_to(*b);
     lru.erase(q);
     num = lru.size();
@@ -1245,11 +1257,16 @@ struct LruBufferCacheShard : public BlueStore::BufferCacheShard {
   void _adjust_size(BlueStore::Buffer *b, int64_t delta) override {
     ceph_assert((int64_t)buffer_bytes + delta >= 0);
     buffer_bytes += delta;
+    assert(*(b->cache_age_bin) + delta >= 0);
+    *(b->cache_age_bin) += delta;
   }
   void _touch(BlueStore::Buffer *b) override {
     auto p = lru.iterator_to(*b);
     lru.erase(p);
     lru.push_front(*b);
+    *(b->cache_age_bin) -= b->length;
+    b->cache_age_bin = age_bins.front();
+    *(b->cache_age_bin) += b->length;
     num = lru.size();
     _audit("_touch_buffer end");
   }
@@ -1266,6 +1283,8 @@ struct LruBufferCacheShard : public BlueStore::BufferCacheShard {
       BlueStore::Buffer *b = &*i;
       ceph_assert(b->is_clean());
       dout(20) << __func__ << " rm " << *b << dendl;
+      assert(*(b->cache_age_bin) >= b->length);
+      *(b->cache_age_bin) -= b->length;
       b->space->_rm_buffer(this, b);
     }
     num = lru.size();
@@ -1377,9 +1396,11 @@ public:
         ceph_abort_msg("bad cache_private");
       }
     }
+    b->cache_age_bin = age_bins.front();
     if (!b->is_empty()) {
       buffer_bytes += b->length;
       list_bytes[b->cache_private] += b->length;
+      *(b->cache_age_bin) += b->length;
     }
     num = hot.size() + warm_in.size();
   }
@@ -1392,6 +1413,8 @@ public:
       buffer_bytes -= b->length;
       ceph_assert(list_bytes[b->cache_private] >= b->length);
       list_bytes[b->cache_private] -= b->length;
+      assert(*(b->cache_age_bin) >= b->length);
+      *(b->cache_age_bin) -= b->length;
     }
     switch (b->cache_private) {
     case BUFFER_WARM_IN:
@@ -1434,6 +1457,7 @@ public:
     if (!b->is_empty()) {
       buffer_bytes += b->length;
       list_bytes[b->cache_private] += b->length;
+      *(b->cache_age_bin) += b->length;
     }
     num = hot.size() + warm_in.size();
   }
@@ -1446,6 +1470,8 @@ public:
       buffer_bytes += delta;
       ceph_assert((int64_t)list_bytes[b->cache_private] + delta >= 0);
       list_bytes[b->cache_private] += delta;
+      assert(*(b->cache_age_bin) + delta >= 0);
+      *(b->cache_age_bin) += delta;
     }
   }
 
@@ -1464,6 +1490,9 @@ public:
       hot.push_front(*b);
       break;
     }
+    *(b->cache_age_bin) -= b->length;
+    b->cache_age_bin = age_bins.front();
+    *(b->cache_age_bin) += b->length;
     num = hot.size() + warm_in.size();
     _audit("_touch_buffer end");
   }
@@ -1511,7 +1540,9 @@ public:
         buffer_bytes -= b->length;
         ceph_assert(list_bytes[BUFFER_WARM_IN] >= b->length);
         list_bytes[BUFFER_WARM_IN] -= b->length;
-        to_evict_bytes -= b->length;
+        assert(*(b->cache_age_bin) >= b->length);
+        *(b->cache_age_bin) -= b->length;
+	to_evict_bytes -= b->length;
         evicted += b->length;
         b->state = BlueStore::Buffer::STATE_EMPTY;
         b->data.clear();
@@ -4176,6 +4207,7 @@ void *BlueStore::MempoolThread::entry()
 
   utime_t next_balance = ceph_clock_now();
   utime_t next_resize = ceph_clock_now();
+  utime_t next_bin_rotation = ceph_clock_now();
   utime_t next_deferred_force_submit = ceph_clock_now();
   utime_t alloc_stats_dump_clock = ceph_clock_now();
 
@@ -4188,21 +4220,47 @@ void *BlueStore::MempoolThread::entry()
       prev_config_change = cur_config_change;
     }
 
-    // Before we trim, check and see if it's time to rebalance/resize.
+    // define various intervals for background work
+    double age_bin_interval = store->cache_age_bin_interval;
     double autotune_interval = store->cache_autotune_interval;
     double resize_interval = store->osd_memory_cache_resize_interval;
     double max_defer_interval = store->max_defer_interval;
-
     double alloc_stats_dump_interval =
       store->cct->_conf->bluestore_alloc_stats_dump_interval;
 
+    // alloc stats dump
     if (alloc_stats_dump_interval > 0 &&
         alloc_stats_dump_clock + alloc_stats_dump_interval < ceph_clock_now()) {
       store->_record_allocation_stats();
       alloc_stats_dump_clock = ceph_clock_now();
     }
+    // cache age binning
+    if (age_bin_interval > 0 && next_bin_rotation < ceph_clock_now()) {
+      if (binned_kv_cache != nullptr) {
+        binned_kv_cache->import_bins(store->kv_bins);
+      }
+      if (binned_kv_onode_cache != nullptr) {
+        binned_kv_onode_cache->import_bins(store->kv_onode_bins);
+      }
+      meta_cache->import_bins(store->meta_bins);
+      data_cache->import_bins(store->data_bins);
+
+      if (pcm != nullptr) {
+        pcm->shift_bins();
+      }
+      next_bin_rotation = ceph_clock_now();
+      next_bin_rotation += age_bin_interval;
+    }
+    // cache balancing
     if (autotune_interval > 0 && next_balance < ceph_clock_now()) {
-      _adjust_cache_settings();
+      if (binned_kv_cache != nullptr) {
+        binned_kv_cache->set_cache_ratio(store->cache_kv_ratio);
+      }
+      if (binned_kv_onode_cache != nullptr) {
+        binned_kv_onode_cache->set_cache_ratio(store->cache_kv_onode_ratio);
+      }
+      meta_cache->set_cache_ratio(store->cache_meta_ratio);
+      data_cache->set_cache_ratio(store->cache_data_ratio);
 
       // Log events at 5 instead of 20 when balance happens.
       interval_stats_trim = true;
@@ -4214,6 +4272,7 @@ void *BlueStore::MempoolThread::entry()
       next_balance = ceph_clock_now();
       next_balance += autotune_interval;
     }
+    // memory resizing (ie autotuning)
     if (resize_interval > 0 && next_resize < ceph_clock_now()) {
       if (ceph_using_tcmalloc() && pcm != nullptr) {
         pcm->tune_memory();
@@ -4221,7 +4280,7 @@ void *BlueStore::MempoolThread::entry()
       next_resize = ceph_clock_now();
       next_resize += resize_interval;
     }
-
+    // deferred force submit
     if (max_defer_interval > 0 &&
 	next_deferred_force_submit < ceph_clock_now()) {
       if (store->get_deferred_last_submitted() + max_defer_interval <
@@ -4248,18 +4307,6 @@ void *BlueStore::MempoolThread::entry()
   return NULL;
 }
 
-void BlueStore::MempoolThread::_adjust_cache_settings()
-{
-  if (binned_kv_cache != nullptr) {
-    binned_kv_cache->set_cache_ratio(store->cache_kv_ratio);
-  }
-  if (binned_kv_onode_cache != nullptr) {
-    binned_kv_onode_cache->set_cache_ratio(store->cache_kv_onode_ratio);
-  }
-  meta_cache->set_cache_ratio(store->cache_meta_ratio);
-  data_cache->set_cache_ratio(store->cache_data_ratio);
-}
-
 void BlueStore::MempoolThread::_resize_shards(bool interval_stats)
 {
   size_t onode_shards = store->onode_cache_shards.size();
@@ -4271,7 +4318,7 @@ void BlueStore::MempoolThread::_resize_shards(bool interval_stats)
 
   uint64_t cache_size = store->cache_size;
   int64_t kv_alloc =
-     static_cast<int64_t>(store->cache_kv_ratio * cache_size); 
+     static_cast<int64_t>(store->cache_kv_ratio * cache_size);
   int64_t kv_onode_alloc =
      static_cast<int64_t>(store->cache_kv_onode_ratio * cache_size);
   int64_t meta_alloc =
@@ -4608,6 +4655,11 @@ const char **BlueStore::get_tracked_conf_keys() const
     "osd_memory_expected_fragmentation",
     "bluestore_cache_autotune",
     "bluestore_cache_autotune_interval",
+    "bluestore_cache_age_bin_interval",
+    "bluestore_cache_kv_age_bins",
+    "bluestore_cache_kv_onode_age_bins",
+    "bluestore_cache_meta_age_bins",
+    "bluestore_cache_data_age_bins",
     "bluestore_warn_on_legacy_statfs",
     "bluestore_warn_on_no_per_pool_omap",
     "bluestore_warn_on_no_per_pg_omap",
@@ -4807,6 +4859,22 @@ int BlueStore::_set_cache_sizes()
   cache_autotune = cct->_conf.get_val<bool>("bluestore_cache_autotune");
   cache_autotune_interval =
       cct->_conf.get_val<double>("bluestore_cache_autotune_interval");
+  cache_age_bin_interval =
+      cct->_conf.get_val<double>("bluestore_cache_age_bin_interval");
+  auto _set_bin = [&](std::string conf_name, std::vector<uint64_t>* intervals)
+  {
+    std::string intervals_str = cct->_conf.get_val<std::string>(conf_name);
+    std::istringstream interval_stream(intervals_str);
+    std::copy(
+      std::istream_iterator<uint64_t>(interval_stream),
+      std::istream_iterator<uint64_t>(),
+      std::back_inserter(*intervals));
+  };
+  _set_bin("bluestore_cache_age_bins_kv", &kv_bins);
+  _set_bin("bluestore_cache_age_bins_kv_onode", &kv_onode_bins);
+  _set_bin("bluestore_cache_age_bins_meta", &meta_bins);
+  _set_bin("bluestore_cache_age_bins_data", &data_bins);
+
   osd_memory_target = cct->_conf.get_val<Option::size_t>("osd_memory_target");
   osd_memory_base = cct->_conf.get_val<Option::size_t>("osd_memory_base");
   osd_memory_expected_fragmentation =
@@ -5189,12 +5257,17 @@ void BlueStore::_init_logger()
   b.add_time_avg(l_bluestore_omap_get_values_lat, "omap_get_values_lat",
     "Average omap get_values call latency",
     "ogvl", PerfCountersBuilder::PRIO_USEFUL);
+  b.add_time_avg(l_bluestore_omap_clear_lat, "omap_clear_lat",
+    "Average omap clear call latency");
   b.add_time_avg(l_bluestore_clist_lat, "clist_lat",
     "Average collection listing latency",
     "cl_l", PerfCountersBuilder::PRIO_USEFUL);
   b.add_time_avg(l_bluestore_remove_lat, "remove_lat",
     "Average removal latency",
     "rm_l", PerfCountersBuilder::PRIO_USEFUL);
+  b.add_time_avg(l_bluestore_truncate_lat, "truncate_lat",
+    "Average truncate latency",
+    "tr_l", PerfCountersBuilder::PRIO_USEFUL);
   //****************************************
 
   // Resulting size axis configuration for op histograms, values are in bytes
@@ -15849,12 +15922,27 @@ int BlueStore::_truncate(TransContext *txc,
   dout(15) << __func__ << " " << c->cid << " " << o->oid
 	   << " 0x" << std::hex << offset << std::dec
 	   << dendl;
+
+  auto start_time = mono_clock::now();
   int r = 0;
   if (offset >= OBJECT_MAX_SIZE) {
     r = -E2BIG;
   } else {
     _do_truncate(txc, c, o, offset);
   }
+  log_latency_fn(
+    __func__,
+    l_bluestore_truncate_lat,
+    mono_clock::now() - start_time,
+    cct->_conf->bluestore_log_op_age,
+    [&](const ceph::timespan& lat) {
+      ostringstream ostr;
+      ostr << ", lat = " << timespan_str(lat)
+        << " cid =" << c->cid
+        << " oid =" << o->oid;
+      return ostr.str();
+    }
+  );
   dout(10) << __func__ << " " << c->cid << " " << o->oid
 	   << " 0x" << std::hex << offset << std::dec
 	   << " = " << r << dendl;
@@ -15969,9 +16057,9 @@ int BlueStore::_remove(TransContext *txc,
   dout(15) << __func__ << " " << c->cid << " " << o->oid
 	   << " onode " << o.get()
 	   << " txc "<< txc << dendl;
-
-  auto start_time = mono_clock::now();
+ auto start_time = mono_clock::now();
   int r = _do_remove(txc, c, o);
+
   log_latency_fn(
     __func__,
     l_bluestore_remove_lat,
@@ -16090,6 +16178,7 @@ void BlueStore::_do_omap_clear(TransContext *txc, OnodeRef& o)
   o->get_omap_tail(&tail);
   txc->t->rm_range_keys(omap_prefix, prefix, tail);
   txc->t->rmkey(omap_prefix, tail);
+  o->onode.clear_omap_flag();
   dout(20) << __func__ << " remove range start: "
            << pretty_binary_string(prefix) << " end: "
            << pretty_binary_string(tail) << dendl;
@@ -16100,13 +16189,16 @@ int BlueStore::_omap_clear(TransContext *txc,
 			   OnodeRef& o)
 {
   dout(15) << __func__ << " " << c->cid << " " << o->oid << dendl;
+  auto t0 = mono_clock::now();
+
   int r = 0;
   if (o->onode.has_omap()) {
     o->flush();
     _do_omap_clear(txc, o);
-    o->onode.clear_omap_flag();
     txc->write_onode(o);
   }
+  logger->tinc(l_bluestore_omap_clear_lat, mono_clock::now() - t0);
+
   dout(10) << __func__ << " " << c->cid << " " << o->oid << " = " << r << dendl;
   return r;
 }
@@ -16318,7 +16410,6 @@ int BlueStore::_clone(TransContext *txc,
     dout(20) << __func__ << " clearing old omap data" << dendl;
     newo->flush();
     _do_omap_clear(txc, newo);
-    newo->onode.clear_omap_flag();
   }
   if (oldo->onode.has_omap()) {
     dout(20) << __func__ << " copying omap data" << dendl;
