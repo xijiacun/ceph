@@ -6578,6 +6578,11 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
     }
     const pg_pool_t *p = osdmap.get_pg_pool(poolid);
     const pool_stat_t* pstat = mon.mgrstatmon()->get_pool_stat(poolid);
+    if (!pstat) {
+      ss << "no stats for pool '" << pool_name << "'";
+      r = -ENOENT;
+      goto reply;
+    }
     const object_stat_sum_t& sum = pstat->stats.sum;
     if (f) {
       f->open_object_section("pool_quotas");
@@ -7885,13 +7890,12 @@ int OSDMonitor::check_pg_num(int64_t pool, int pg_num, int size, int crush_rule,
       }
       osd_num += osd_ids.size() - out_osd;
     }
-    if (pool >= 0) {   
-      // update an existing pool's pg num
-      const auto& pg_info = osdmap.get_pools().at(pool);    
-      // already counted the pgs of this `pool` by iterating crush map, so 
+    if (pool >= 0) {
+      // update an existing pool's pg num.
+      // already counted the pgs of this `pool` by iterating crush map, so
       // remove them using adding the specified pg num
       projected += pg_num * size;
-      projected -= pg_info.get_pg_num_target() * pg_info.get_size();
+      projected -= mapping.get_num_acting_pgs(pool);
     }
     num_osds = std::max(osd_num, 3u);  // assume min cluster size 3
   } else {

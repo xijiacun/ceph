@@ -738,6 +738,7 @@ class CephadmOrchestrator(orchestrator.Orchestrator, MgrModule,
             sd.rank = int(d['rank']) if d.get('rank') is not None else None
             sd.rank_generation = int(d['rank_generation']) if d.get(
                 'rank_generation') is not None else None
+            sd.extra_container_args = d.get('extra_container_args')
             if 'state' in d:
                 sd.status_desc = d['state']
                 sd.status = {
@@ -2414,7 +2415,7 @@ Then run the following:
     @handle_orch_error
     def plan(self, specs: Sequence[GenericSpec]) -> List:
         results = [{'warning': 'WARNING! Dry-Runs are snapshots of a certain point in time and are bound \n'
-                               'to the current inventory setup. If any on these conditions changes, the \n'
+                               'to the current inventory setup. If any of these conditions change, the \n'
                                'preview will be invalid. Please make sure to have a minimal \n'
                                'timeframe between planning and applying the specs.'}]
         if any([spec.service_type == 'host' for spec in specs]):

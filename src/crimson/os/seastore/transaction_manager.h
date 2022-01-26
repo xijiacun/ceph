@@ -374,6 +374,15 @@ public:
   submit_transaction_direct_ret submit_transaction_direct(
     Transaction &t) final;
 
+  /**
+   * flush
+   *
+   * Block until all outstanding IOs on handle are committed.
+   * Note, flush() machinery must go through the same pipeline
+   * stages and locks as submit_transaction.
+   */
+  seastar::future<> flush(OrderingHandle &handle);
+
   using SegmentCleaner::ExtentCallbackInterface::get_next_dirty_extents_ret;
   get_next_dirty_extents_ret get_next_dirty_extents(
     Transaction &t,
@@ -391,7 +400,7 @@ public:
     extent_types_t type,
     paddr_t addr,
     laddr_t laddr,
-    segment_off_t len) final;
+    seastore_off_t len) final;
 
   using release_segment_ret =
     SegmentCleaner::ExtentCallbackInterface::release_segment_ret;

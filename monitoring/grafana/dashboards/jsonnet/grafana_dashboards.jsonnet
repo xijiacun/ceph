@@ -114,7 +114,7 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         'AVG Disk Utilization',
         'Average Disk utilization for all OSD data devices (i.e. excludes journal/WAL)',
         'current',
-        'avg (\n  label_replace((irate(node_disk_io_time_ms[5m]) / 10 ) or\n   (irate(node_disk_io_time_seconds_total[5m]) * 100), "instance", "$1", "instance", "([^.:]*).*"\n  ) *\n  on(instance, device, ceph_daemon) label_replace(label_replace(ceph_disk_occupation{instance=~"($osd_hosts).*"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^.:]*).*")\n)',
+        'avg (\n  label_replace((irate(node_disk_io_time_ms[5m]) / 10 ) or\n   (irate(node_disk_io_time_seconds_total[5m]) * 100), "instance", "$1", "instance", "([^.:]*).*"\n  ) *\n  on(instance, device) group_left(ceph_daemon) label_replace(label_replace(ceph_disk_occupation_human{instance=~"($osd_hosts).*"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^.:]*).*")\n)',
         'time_series',
         16, 0, 4, 5
         ),
@@ -313,14 +313,14 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         'connected',
         'ops',
         'Read (-) / Write (+)',
-        'label_replace(\n  (\n    irate(node_disk_writes_completed{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or\n    irate(node_disk_writes_completed_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])\n  ),\n  "instance",\n  "$1",\n  "instance",\n  "([^:.]*).*"\n)\n* on(instance, device, ceph_daemon) group_left\n  label_replace(\n    label_replace(\n      ceph_disk_occupation,\n      "device",\n      "$1",\n      "device",\n      "/dev/(.*)"\n    ),\n    "instance",\n    "$1",\n    "instance",\n    "([^:.]*).*"\n  )',
+        'label_replace(\n  (\n    irate(node_disk_writes_completed{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or\n    irate(node_disk_writes_completed_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])\n  ),\n  "instance",\n  "$1",\n  "instance",\n  "([^:.]*).*"\n)\n* on(instance, device) group_left(ceph_daemon)\n  label_replace(\n    label_replace(\n      ceph_disk_occupation_human,\n      "device",\n      "$1",\n      "device",\n      "/dev/(.*)"\n    ),\n    "instance",\n    "$1",\n    "instance",\n    "([^:.]*).*"\n  )',
         '{{device}}({{ceph_daemon}}) writes',
         0, 12, 11, 9
         )
       .addTargets(
         [
         addTargetSchema(
-          'label_replace(\n    (irate(node_disk_reads_completed{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or irate(node_disk_reads_completed_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])),\n    "instance",\n    "$1",\n    "instance",\n    "([^:.]*).*"\n)\n* on(instance, device, ceph_daemon) group_left\n  label_replace(\n    label_replace(\n      ceph_disk_occupation,\n      "device",\n      "$1",\n      "device",\n      "/dev/(.*)"\n    ),\n    "instance",\n    "$1",\n    "instance",\n    "([^:.]*).*"\n  )',
+          'label_replace(\n    (irate(node_disk_reads_completed{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or irate(node_disk_reads_completed_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])),\n    "instance",\n    "$1",\n    "instance",\n    "([^:.]*).*"\n)\n* on(instance, device) group_left(ceph_daemon)\n  label_replace(\n    label_replace(\n      ceph_disk_occupation_human,\n      "device",\n      "$1",\n      "device",\n      "/dev/(.*)"\n    ),\n    "instance",\n    "$1",\n    "instance",\n    "([^:.]*).*"\n  )',
           1,
           'time_series',
           '{{device}}({{ceph_daemon}}) reads'
@@ -334,14 +334,14 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         'connected',
         'Bps',
         'Read (-) / Write (+)',
-        'label_replace((irate(node_disk_bytes_written{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or irate(node_disk_written_bytes_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])), "instance", "$1", "instance", "([^:.]*).*") * on(instance, device, ceph_daemon) group_left label_replace(label_replace(ceph_disk_occupation, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace((irate(node_disk_bytes_written{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or irate(node_disk_written_bytes_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])), "instance", "$1", "instance", "([^:.]*).*") * on(instance, device) group_left(ceph_daemon) label_replace(label_replace(ceph_disk_occupation_human, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         '{{device}}({{ceph_daemon}}) write',
         12, 12, 11, 9
         )
       .addTargets(
         [
         addTargetSchema(
-        'label_replace((irate(node_disk_bytes_read{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or irate(node_disk_read_bytes_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])), "instance", "$1", "instance", "([^:.]*).*") * on(instance, device, ceph_daemon) group_left label_replace(label_replace(ceph_disk_occupation, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace((irate(node_disk_bytes_read{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) or irate(node_disk_read_bytes_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m])), "instance", "$1", "instance", "([^:.]*).*") * on(instance, device) group_left(ceph_daemon) label_replace(label_replace(ceph_disk_occupation_human, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         1,
         'time_series',
         '{{device}}({{ceph_daemon}}) read'
@@ -355,7 +355,7 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         'null as zero',
         's',
         '',
-        'max by(instance,device) (label_replace((irate(node_disk_write_time_seconds_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) )  / clamp_min(irate(node_disk_writes_completed_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]), 0.001) or   (irate(node_disk_read_time_seconds_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) )  / clamp_min(irate(node_disk_reads_completed_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]), 0.001), "instance", "$1", "instance", "([^:.]*).*")) *  on(instance, device, ceph_daemon) group_left label_replace(label_replace(ceph_disk_occupation{instance=~"($ceph_hosts)([\\\\.:].*)?"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'max by(instance,device) (label_replace((irate(node_disk_write_time_seconds_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) )  / clamp_min(irate(node_disk_writes_completed_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]), 0.001) or   (irate(node_disk_read_time_seconds_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) )  / clamp_min(irate(node_disk_reads_completed_total{ instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]), 0.001), "instance", "$1", "instance", "([^:.]*).*")) *  on(instance, device) group_left(ceph_daemon) label_replace(label_replace(ceph_disk_occupation_human{instance=~"($ceph_hosts)([\\\\.:].*)?"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         '{{device}}({{ceph_daemon}})',
         0, 21, 11, 9
       ),
@@ -366,7 +366,7 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         'connected',
         'percent',
         '%Util',
-        'label_replace(((irate(node_disk_io_time_ms{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) / 10 ) or  irate(node_disk_io_time_seconds_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) * 100), "instance", "$1", "instance", "([^:.]*).*") * on(instance, device, ceph_daemon) group_left label_replace(label_replace(ceph_disk_occupation{instance=~"($ceph_hosts)([\\\\.:].*)?"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace(((irate(node_disk_io_time_ms{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) / 10 ) or  irate(node_disk_io_time_seconds_total{instance=~"($ceph_hosts)([\\\\.:].*)?"}[5m]) * 100), "instance", "$1", "instance", "([^:.]*).*") * on(instance, device) group_left(ceph_daemon) label_replace(label_replace(ceph_disk_occupation_human{instance=~"($ceph_hosts)([\\\\.:].*)?"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         '{{device}}({{ceph_daemon}})',
         12, 21, 11, 9
       )
@@ -733,7 +733,7 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
     local RbdDetailsPanel(title, formatY1, expr1, expr2, x, y, w, h) =
       graphPanelSchema({}, title, '', 'null as zero', false, formatY1, formatY1, null, null, 0, 1, '$Datasource')
       .addTargets(
-        [addTargetSchema(expr1, 1, 'time_series', 'Write'),addTargetSchema(expr2, 1, 'time_series', 'Read')]) + {gridPos: {x: x, y: y, w: w, h: h}};
+        [addTargetSchema(expr1, 1, 'time_series', '{{pool}} Write'),addTargetSchema(expr2, 1, 'time_series', '{{pool}} Read')]) + {gridPos: {x: x, y: y, w: w, h: h}};
 
     dashboardSchema(
       'RBD Details', 'Detailed Performance of RBD Images (IOPS/Throughput/Latency)', 'YhCYGcuZz', 'now-1h', false, 16, [], '', {refresh_intervals:['5s','10s','30s','1m','5m','15m','30m','1h','2h','1d'],time_options:['5m','15m','1h','6h','12h','24h','2d','7d','30d']}
@@ -988,18 +988,18 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         '$datasource', '', {"col": 5,"desc": true}, [PoolOverviewStyle('', 'Time', 'hidden', 'short', null, [], []),PoolOverviewStyle('', 'instance', 'hidden', 'short', null, [], []),PoolOverviewStyle('', 'job', 'hidden', 'short', null, [], []),PoolOverviewStyle('Pool Name', 'name', 'string', 'short', null, [], []),PoolOverviewStyle('Pool ID', 'pool_id', 'hidden', 'none', null, [], []),PoolOverviewStyle('Compression Factor', 'Value #A', 'number', 'none', null, [], []),PoolOverviewStyle('% Used', 'Value #D', 'number', 'percentunit', 'value', ['70','85'], []),PoolOverviewStyle('Usable Free', 'Value #B', 'number', 'bytes', null, [], []),PoolOverviewStyle('Compression Eligibility', 'Value #C', 'number', 'percent', null, [], []),PoolOverviewStyle('Compression Savings', 'Value #E', 'number', 'bytes', null, [], []),PoolOverviewStyle('Growth (5d)', 'Value #F', 'number', 'bytes', 'value', ['0', '0'], []),PoolOverviewStyle('IOPS', 'Value #G', 'number', 'none', null, [], []),PoolOverviewStyle('Bandwidth', 'Value #H', 'number', 'Bps', null, [], []),PoolOverviewStyle('', '__name__', 'hidden', 'short', null, [], []),PoolOverviewStyle('', 'type', 'hidden', 'short', null, [], []),PoolOverviewStyle('', 'compression_mode', 'hidden', 'short', null, [], []),PoolOverviewStyle('Type', 'description', 'string', 'short', null, [], []),PoolOverviewStyle('Stored', 'Value #J', 'number', 'bytes', null, [], []),PoolOverviewStyle('', 'Value #I', 'hidden', 'short', null, [], []),PoolOverviewStyle('Compression', 'Value #K', 'string', 'short', null, [], [{"text": "ON","value": "1"}])], 'Pool Overview', 'table'
       )
       .addTargets(
-        [addTargetSchema('(ceph_pool_compress_under_bytes / ceph_pool_compress_bytes_used > 0) and on(pool_id) (((ceph_pool_compress_under_bytes > 0) / ceph_pool_stored_raw) * 100 > 0.5)', 1, 'table', ''),
-        addTargetSchema('ceph_pool_max_avail * on(pool_id) group_left(name) ceph_pool_metadata', 1, 'table', ''),
-        addTargetSchema('((ceph_pool_compress_under_bytes > 0) / ceph_pool_stored_raw) * 100', 1, 'table', ''),
-        addTargetSchema('(ceph_pool_percent_used * on(pool_id) group_left(name) ceph_pool_metadata)', 1, 'table', ''),
-        addTargetSchema('(ceph_pool_compress_under_bytes - ceph_pool_compress_bytes_used > 0)', 1, 'table', ''),
-        addTargetSchema('delta(ceph_pool_stored[5d])', 1, 'table', ''),
-        addTargetSchema('rate(ceph_pool_rd[30s]) + rate(ceph_pool_wr[30s])', 1, 'table', ''),
-        addTargetSchema('rate(ceph_pool_rd_bytes[30s]) + rate(ceph_pool_wr_bytes[30s])', 1, 'table', ''),
-        addTargetSchema('ceph_pool_metadata', 1, 'table', ''),
-        addTargetSchema('ceph_pool_stored * on(pool_id) group_left ceph_pool_metadata', 1, 'table', ''),
-        addTargetSchema('ceph_pool_metadata{compression_mode!="none"}', 1, 'table', ''),
-        addTargetSchema('', '', '', '')]
+        [addTargetSchema('(ceph_pool_compress_under_bytes / ceph_pool_compress_bytes_used > 0) and on(pool_id) (((ceph_pool_compress_under_bytes > 0) / ceph_pool_stored_raw) * 100 > 0.5)', 1, 'table', 'A'),
+        addTargetSchema('ceph_pool_max_avail * on(pool_id) group_left(name) ceph_pool_metadata', 1, 'table', 'B'),
+        addTargetSchema('((ceph_pool_compress_under_bytes > 0) / ceph_pool_stored_raw) * 100', 1, 'table', 'C'),
+        addTargetSchema('(ceph_pool_percent_used * on(pool_id) group_left(name) ceph_pool_metadata)', 1, 'table', 'D'),
+        addTargetSchema('(ceph_pool_compress_under_bytes - ceph_pool_compress_bytes_used > 0)', 1, 'table', 'E'),
+        addTargetSchema('delta(ceph_pool_stored[5d])', 1, 'table', 'F'),
+        addTargetSchema('rate(ceph_pool_rd[30s]) + rate(ceph_pool_wr[30s])', 1, 'table', 'G'),
+        addTargetSchema('rate(ceph_pool_rd_bytes[30s]) + rate(ceph_pool_wr_bytes[30s])', 1, 'table', 'H'),
+        addTargetSchema('ceph_pool_metadata', 1, 'table', 'I'),
+        addTargetSchema('ceph_pool_stored * on(pool_id) group_left ceph_pool_metadata', 1, 'table', 'J'),
+        addTargetSchema('ceph_pool_metadata{compression_mode!=\"none\"}', 1, 'table', 'K'),
+        addTargetSchema('', '', '', 'L')]
       ) + {gridPos: {x: 0, y: 3, w: 24, h: 6}},
       PoolOverviewGraphPanel(
         'Top $topk Client IOPS by Pool',
@@ -1171,7 +1171,7 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
       addPieChartSchema(alias, '$datasource', description, 'Under graph', 'pie', title, 'current');
     local OsdOverviewSingleStatPanel(colors, format, title, description, valueName, colorValue, gaugeMaxValue, gaugeShow, sparkLineShow, thresholds, expr, targetFormat, x, y, w, h) =
       addSingelStatSchema(colors, '$datasource', format, title, description, valueName, colorValue, gaugeMaxValue, gaugeShow, sparkLineShow, thresholds)
-      .addTarget(addTargetSchema(expr, 1, targetFormat, '')) + {gridPos: {x: x, y: y, w: w, h: h}};  
+      .addTarget(addTargetSchema(expr, 1, targetFormat, '')) + {gridPos: {x: x, y: y, w: w, h: h}};
 
     dashboardSchema(
       'OSD Overview', '', 'lo02I1Aiz', 'now-1h', '10s', 16, [], '', {refresh_intervals:['5s','10s','30s','1m','5m','15m','30m','1h','2h','1d'],time_options:['5m','15m','1h','6h','12h','24h','2d','7d','30d']}
@@ -1287,7 +1287,6 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         'OSD Objectstore Types'
       )
       .addTarget(addTargetSchema('count(ceph_bluefs_wal_total_bytes)', 1, 'time_series', 'bluestore'))
-      .addTarget(addTargetSchema('count(ceph_osd_metadata) - count(ceph_bluefs_wal_total_bytes)', 1, 'time_series', 'filestore'))
       .addTarget(addTargetSchema('absent(ceph_bluefs_wal_total_bytes)*count(ceph_osd_metadata)', 1, 'time_series', 'filestore')) + {gridPos: {x: 4, y: 8, w: 4, h: 8}},
       OsdOverviewPieChartPanel(
         {},
@@ -1404,8 +1403,8 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         '',
         's',
         'Read (-) / Write (+)',
-        '(label_replace(irate(node_disk_read_time_seconds_total[1m]) / irate(node_disk_reads_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*"))',
-        '(label_replace(irate(node_disk_write_time_seconds_total[1m]) / irate(node_disk_writes_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*"))',
+        '(label_replace(irate(node_disk_read_time_seconds_total[1m]) / irate(node_disk_reads_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*"))',
+        '(label_replace(irate(node_disk_write_time_seconds_total[1m]) / irate(node_disk_writes_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*"))',
         '{{instance}}/{{device}} Reads',
         '{{instance}}/{{device}} Writes',
         0, 11, 6, 9
@@ -1417,8 +1416,8 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         '',
         'short',
         'Read (-) / Write (+)',
-        'label_replace(irate(node_disk_writes_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
-        'label_replace(irate(node_disk_reads_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace(irate(node_disk_writes_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace(irate(node_disk_reads_completed_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         '{{device}} on {{instance}} Writes',
         '{{device}} on {{instance}} Reads',
         6, 11, 6, 9
@@ -1430,8 +1429,8 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
         '',
         'Bps',
         'Read (-) / Write (+)',
-        'label_replace(irate(node_disk_read_bytes_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
-        'label_replace(irate(node_disk_written_bytes_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace(irate(node_disk_read_bytes_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace(irate(node_disk_written_bytes_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         '{{instance}} {{device}} Reads',
         '{{instance}} {{device}} Writes',
         12, 11, 6, 9
@@ -1452,7 +1451,7 @@ local addStyle(alias, colorMode, colors, dateFormat, decimals, mappingType, patt
       )
       .addTarget(
        addTargetSchema(
-        'label_replace(irate(node_disk_io_time_seconds_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
+        'label_replace(irate(node_disk_io_time_seconds_total[1m]), "instance", "$1", "instance", "([^:.]*).*") and on (instance, device) label_replace(label_replace(ceph_disk_occupation_human{ceph_daemon=~"$osd"}, "device", "$1", "device", "/dev/(.*)"), "instance", "$1", "instance", "([^:.]*).*")',
         1,
         'time_series',
         '{{device}} on {{instance}}'
