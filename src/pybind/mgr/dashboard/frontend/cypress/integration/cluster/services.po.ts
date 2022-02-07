@@ -49,13 +49,18 @@ export class ServicesPageHelper extends PageHelper {
         case 'ingress':
           this.selectOption('backend_service', 'rgw.foo');
           cy.get('#service_id').should('have.value', 'rgw.foo');
-          cy.get('#virtual_ip').type('192.168.20.1/24');
+          cy.get('#virtual_ip').type('192.168.100.1/24');
           cy.get('#frontend_port').type('8081');
           cy.get('#monitor_port').type('8082');
           break;
 
         case 'nfs':
           cy.get('#service_id').type('testnfs');
+          cy.get('#count').type(count);
+          break;
+
+        default:
+          cy.get('#service_id').type('test');
           cy.get('#count').type(count);
           break;
       }
@@ -80,14 +85,14 @@ export class ServicesPageHelper extends PageHelper {
     });
   }
 
-  checkServiceStatus(daemon: string) {
+  checkServiceStatus(daemon: string, expectedStatus = 'running') {
     cy.get('cd-service-daemon-list').within(() => {
       this.getTableCell(this.serviceDetailColumnIndex.daemonType, daemon)
         .parent()
         .find(`datatable-body-cell:nth-child(${this.serviceDetailColumnIndex.status}) .badge`)
         .should(($ele) => {
           const status = $ele.toArray().map((v) => v.innerText);
-          expect(status).to.include('running');
+          expect(status).to.include(expectedStatus);
         });
     });
   }
@@ -127,5 +132,12 @@ export class ServicesPageHelper extends PageHelper {
     // Wait for modal to close
     cy.get('cd-modal').should('not.exist');
     this.checkExist(serviceName, false);
+  }
+
+  daemonAction(daemon: string, action: string) {
+    cy.get('cd-service-daemon-list').within(() => {
+      this.getTableRow(daemon).click();
+      this.clickActionButton(action);
+    });
   }
 }

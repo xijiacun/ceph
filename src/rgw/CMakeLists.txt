@@ -3,12 +3,12 @@ if(NOT GPERF)
   message(FATAL_ERROR "Can't find gperf")
 endif()
 
-find_package(Arrow QUIET)
-if(Arrow_FOUND)
+if(WITH_RADOSGW_SELECT_PARQUET)
+  find_package(Arrow QUIET REQUIRED)
   set(ARROW_LIBRARIES "-larrow -lparquet")
   add_definitions(-D_ARROW_EXIST)
   message("-- arrow is installed, radosgw/s3select-op is able to process parquet objects")
-endif()
+endif(WITH_RADOSGW_SELECT_PARQUET)
 
 function(gperf_generate input output)
   add_custom_command(
@@ -176,6 +176,9 @@ if(WITH_RADOSGW_DBSTORE)
   add_subdirectory(store/dbstore)
   list(APPEND librgw_common_srcs rgw_sal_dbstore.cc)
 endif()
+if(WITH_RADOSGW_MOTR)
+  list(APPEND librgw_common_srcs rgw_sal_motr.cc)
+endif()
 if(WITH_JAEGER)
   list(APPEND librgw_common_srcs rgw_tracer.cc)
 endif()
@@ -217,7 +220,7 @@ target_link_libraries(rgw_common
   PUBLIC
     spawn)
 target_include_directories(rgw_common
-  SYSTEM PUBLIC "services"
+  PUBLIC "services"
   PUBLIC "${CMAKE_SOURCE_DIR}/src/rgw"
   PRIVATE "${LUA_INCLUDE_DIR}")
 if(WITH_RADOSGW_KAFKA_ENDPOINT)
@@ -256,6 +259,14 @@ endif()
 
 if(WITH_RADOSGW_DBSTORE)
   target_link_libraries(rgw_common PRIVATE global dbstore)
+endif()
+
+if(WITH_RADOSGW_MOTR)
+  target_include_directories(rgw_common PRIVATE "/usr/include/motr")
+  target_compile_options(rgw_common PRIVATE "-Wno-attributes")
+  target_compile_definitions(rgw_common
+    PRIVATE "M0_EXTERN=extern" "M0_INTERNAL=")
+  target_link_libraries(rgw_common PRIVATE motr motr-helpers)
 endif()
 
 set(rgw_a_srcs
@@ -299,7 +310,7 @@ add_library(rgw_a STATIC
 target_compile_definitions(rgw_a PUBLIC "-DCLS_CLIENT_HIDE_IOCTX")
 target_include_directories(rgw_a PUBLIC "${CMAKE_SOURCE_DIR}/src/dmclock/support/src")
 target_include_directories(rgw_a SYSTEM PUBLIC "../rapidjson/include")
-target_include_directories(rgw_a SYSTEM PUBLIC "${CMAKE_SOURCE_DIR}/src/rgw")
+target_include_directories(rgw_a PUBLIC "${CMAKE_SOURCE_DIR}/src/rgw")
 
 if(WITH_RADOSGW_AMQP_ENDPOINT)
   find_package(RabbitMQ REQUIRED)
